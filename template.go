@@ -212,6 +212,7 @@ func (t *templater) logicOpen(open *block, output *bytes.Buffer) error {
 
 	closeOrOperand := t.peek()
 	if closeOrOperand.Type == LogicClose {
+		// Variable ({var})
 		t.nextFromBuf()
 
 		if output != nil {
@@ -229,6 +230,7 @@ func (t *templater) logicOpen(open *block, output *bytes.Buffer) error {
 	} else if ifWordOrVar.String() != "if" {
 		return ifWordOrVar.expectedWord("\"if\"")
 	}
+	// If Statement
 
 	t.nextFromBuf()
 	val1, err := t.operand(&closeOrOperand)
@@ -240,9 +242,11 @@ func (t *templater) logicOpen(open *block, output *bytes.Buffer) error {
 
 	ifTrue := false
 	if comparisonOrClose.Type == LogicClose {
+		// If Bool(val)
 		positive := t.input[closeOrOperand.a] != '!'
 		ifTrue = positive == truthy(val1)
 	} else {
+		// If valA ==/!= valB
 		operand2 := t.peek()
 
 		comparison := comparisonOrClose.String()
@@ -275,6 +279,10 @@ func (t *templater) logicOpen(open *block, output *bytes.Buffer) error {
 	}
 	var next block
 	var content bytes.Buffer
+	var contentPtr *bytes.Buffer = nil
+	if ifTrue {
+		contentPtr = &content
+	}
 	for {
 		next = t.nextFromBuf()
 		if next.Type == EOF {
@@ -286,14 +294,15 @@ func (t *templater) logicOpen(open *block, output *bytes.Buffer) error {
 				t.nextFromBuf()
 				shouldBeClose := t.nextFromBuf()
 				if shouldBeClose.Type == LogicClose {
-					output.Write(content.Bytes())
+					if output != nil {
+						output.Write(content.Bytes())
+					}
 					break
 				}
 			}
 		}
-		if ifTrue {
-			t.process(&next, &content)
-		}
+		// We need to process for the sake of nested if statements.
+		t.process(&next, contentPtr)
 	}
 	if next.Type == EOF {
 		return next.expectedWord("{endif}")

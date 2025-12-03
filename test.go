@@ -205,3 +205,34 @@ func testNegation(t *testing.T, templateFunc templatingFunc) {
 		f(false, t)
 	})
 }
+
+func testNestedIf(t *testing.T, templateFunc templatingFunc) {
+	in := `{if varA}a{if varB}b{endif}{endif}`
+	cases := []struct {
+		name   string
+		a, b   bool
+		target string
+	}{
+		{"ff", false, false, ""},
+		{"ft", false, true, ""},
+		{"tf", true, false, "a"},
+		{"tt", true, true, "ab"},
+	}
+	vars := []string{"varA", "varB"}
+	conds := vars
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			vals := map[string]any{
+				"varA": testCase.a,
+				"varB": testCase.b,
+			}
+			out, err := templateFunc(in, vars, conds, vals)
+			if err != nil {
+				t.Fatalf("error: %+v", err)
+			}
+			if out != testCase.target {
+				t.Fatalf(`returned string doesn't match desired output: "%+v" != "%+v"`, out, testCase.target)
+			}
+		})
+	}
+}

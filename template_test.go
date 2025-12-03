@@ -116,3 +116,5 @@ func TestSingleEqualsWarning(t *testing.T) {
 		t.Fatalf(`template if not evaluated correctly when using a single equals: "%+v" != "%+v"`, out, target)
 	}
 }
+
+func TestNestedIf(t *testing.T) { testNestedIf(t, templateWrapper) }

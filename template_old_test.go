@@ -18,3 +18,5 @@ func TestVarAtAnyPositionOld(t *testing.T) { testVarAtAnyPosition(t, TemplateOld
 func TestIncompleteBlockOld(t *testing.T)  { testIncompleteBlock(t, TemplateOld) }
 
 func TestNegationOld(t *testing.T) { testNegation(t, TemplateOld) }
+
+func TestNestedIfOld(t *testing.T) { testNestedIf(t, TemplateOld) }
