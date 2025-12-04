@@ -323,14 +323,37 @@ func (t *templater) processIfBody(ifTrue bool, output *bytes.Buffer) error {
 		}
 		if next.Type == LogicOpen {
 			endif := t.peek()
-			if endif.Type == Word && endif.String() == "endif" {
-				t.nextFromBuf()
-				shouldBeClose := t.nextFromBuf()
-				if shouldBeClose.Type == LogicClose {
-					if output != nil {
-						output.Write(content.Bytes())
+			if endif.Type == Word {
+				endifString := endif.String()
+				if endifString == "endif" {
+					t.nextFromBuf()
+					shouldBeClose := t.nextFromBuf()
+					if shouldBeClose.Type == LogicClose {
+						if output != nil {
+							output.Write(content.Bytes())
+						}
+						break
 					}
-					break
+				} else if endifString == "else" {
+					t.nextFromBuf()
+					shouldBeClose := t.nextFromBuf()
+					// Invert if condition to decide if we evaluate the next else/else if body.
+					if ifTrue {
+						contentPtr = nil
+					} else {
+						contentPtr = &content
+					}
+					if shouldBeClose.Type == LogicClose {
+						// Continue the loop, i.e. print/not print depending on inverted ifTrue.
+						continue
+					} else if shouldBeClose.String() == "if" {
+						// Evaluate the if statement, let it calls its own copy of us.
+						err := t.ifStatement(&shouldBeClose, contentPtr)
+						if output != nil {
+							output.Write(content.Bytes())
+						}
+						return err
+					}
 				}
 			}
 		}
@@ -349,14 +372,14 @@ func (t *templater) logicOpen(open *block, output *bytes.Buffer) error {
 		return ifWordOrVar.expected(Word)
 	}
 
-	closeOrOperand := t.nextFromBuf()
+	closeOrOperand := t.peek()
 	if closeOrOperand.Type == LogicClose {
-		return t.templateValue(open, &ifWordOrVar, &closeOrOperand, output)
+		return t.templateValue(open, &ifWordOrVar, output)
 	}
-	return t.ifStatement(&ifWordOrVar, &closeOrOperand, output)
+	return t.ifStatement(&ifWordOrVar, output)
 }
 
-func (t *templater) templateValue(open, variable, close *block, output *bytes.Buffer) error {
+func (t *templater) templateValue(open, variable *block, output *bytes.Buffer) error {
 	if output != nil {
 		val, ok := t.vals[variable.String()]
 		if ok {
@@ -365,18 +388,20 @@ func (t *templater) templateValue(open, variable, close *block, output *bytes.Bu
 			// If var isn't found, leave output the same
 			output.WriteString(open.String())
 			output.WriteString(variable.String())
+			close := t.nextFromBuf()
 			output.WriteString(close.String())
 		}
 	}
 	return nil
 }
 
-func (t *templater) ifStatement(ifWord, operand *block, output *bytes.Buffer) error {
+func (t *templater) ifStatement(ifWord *block, output *bytes.Buffer) error {
 	if ifWord.String() != "if" {
 		return ifWord.expectedWord("\"if\"")
 	}
 
-	val1, err := t.operand(operand)
+	operand := t.nextFromBuf()
+	val1, err := t.operand(&operand)
 	if err != nil {
 		return err
 	}
@@ -384,9 +409,9 @@ func (t *templater) ifStatement(ifWord, operand *block, output *bytes.Buffer) er
 	comparisonOrClose := t.nextFromBuf()
 
 	if comparisonOrClose.Type == LogicClose {
-		return t.ifTruthy(operand, val1, output)
+		return t.ifTruthy(&operand, val1, output)
 	}
-	return t.ifComparison(operand, &comparisonOrClose, val1, output)
+	return t.ifComparison(&operand, &comparisonOrClose, val1, output)
 }
 
 func (t *templater) ifTruthy(operand *block, val any, output *bytes.Buffer) error {

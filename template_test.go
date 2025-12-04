@@ -118,3 +118,122 @@ func TestSingleEqualsWarning(t *testing.T) {
 }
 
 func TestNestedIf(t *testing.T) { testNestedIf(t, templateWrapper) }
+
+func TestIfElse(t *testing.T) {
+	t.Run("true", func(t *testing.T) { testIfElse(true, t) })
+	t.Run("false", func(t *testing.T) { testIfElse(false, t) })
+}
+
+func testIfElse(isTrue bool, t *testing.T) {
+	in := `{if opA}a{else}b{endif}`
+	out, err := Template(in, map[string]any{
+		"opA": isTrue,
+	})
+
+	var target string
+	if isTrue {
+		target = "a"
+	} else {
+		target = "b"
+	}
+
+	if err != nil {
+		t.Fatalf("error: %+v", err)
+	}
+
+	if out != target {
+		t.Fatalf(`returned string doesn't match desired output: "%+v" != "%+v"`, out, target)
+	}
+}
+
+func TestIfElseIf(t *testing.T) {
+	in := `{if opA}a{else if opB}b{endif}`
+	cases := []struct {
+		name   string
+		a, b   bool
+		target string
+	}{
+		{"ff", false, false, ""},
+		{"ft", false, true, "b"},
+		{"tf", true, false, "a"},
+		{"tt", true, true, "a"},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+
+			out, err := Template(in, map[string]any{
+				"opA": testCase.a,
+				"opB": testCase.b,
+			})
+
+			if err != nil {
+				t.Fatalf("error: %+v", err)
+			}
+
+			if out != testCase.target {
+				t.Fatalf(`returned string doesn't match desired output: "%+v" != "%+v"`, out, testCase.target)
+			}
+		})
+	}
+}
+
+func TestAdvancedIfElseIf(t *testing.T) {
+	in := `{if opA == "a"}a{else if opB != "b"}b{endif}`
+	cases := []struct {
+		a, b   string
+		target string
+	}{
+		{"a", "a", "a"},
+		{"a", "b", "a"},
+		{"b", "a", "b"},
+		{"b", "b", ""},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.a+testCase.b, func(t *testing.T) {
+
+			out, err := Template(in, map[string]any{
+				"opA": testCase.a,
+				"opB": testCase.b,
+			})
+
+			if err != nil {
+				t.Fatalf("error: %+v", err)
+			}
+
+			if out != testCase.target {
+				t.Fatalf(`returned string doesn't match desired output: "%+v" != "%+v"`, out, testCase.target)
+			}
+		})
+	}
+}
+
+func TestIfElseIfElse(t *testing.T) {
+	in := `{if opA}a{else if opB}b{else}c{endif}`
+	cases := []struct {
+		name   string
+		a, b   bool
+		target string
+	}{
+		{"ff", false, false, "c"},
+		{"ft", false, true, "b"},
+		{"tf", true, false, "a"},
+		{"tt", true, true, "a"},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+
+			out, err := Template(in, map[string]any{
+				"opA": testCase.a,
+				"opB": testCase.b,
+			})
+
+			if err != nil {
+				t.Fatalf("error: %+v", err)
+			}
+
+			if out != testCase.target {
+				t.Fatalf(`returned string doesn't match desired output: "%+v" != "%+v"`, out, testCase.target)
+			}
+		})
+	}
+}
