@@ -5,7 +5,7 @@ simple templater for templates written by an end user. see godoc for more info.
 
 ## todo
 
-- [ ] Implement else/else if
+- [x] Implement else/else if
 - [ ] Duplicate implementation in Typescript
 
 ## rough perf comparison
