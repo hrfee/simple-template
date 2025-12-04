@@ -25,7 +25,7 @@ const (
 	seekBufferSize = 3
 )
 
-func truthy(val interface{}) bool {
+func truthy(val any) bool {
 	switch v := val.(type) {
 	case string:
 		return v != ""
@@ -358,7 +358,9 @@ func (t *templater) processIfBody(ifTrue bool, output *bytes.Buffer) error {
 			}
 		}
 		// We need to process for the sake of nested if statements.
-		t.process(&next, contentPtr)
+		if err := t.process(&next, contentPtr); err != nil {
+			return err
+		}
 	}
 	if next.Type == EOF {
 		return next.expectedWord("{endif}")
@@ -382,13 +384,13 @@ func (t *templater) logicOpen(open *block, output *bytes.Buffer) error {
 func (t *templater) templateValue(open, variable *block, output *bytes.Buffer) error {
 	if output != nil {
 		val, ok := t.vals[variable.String()]
+		close := t.nextFromBuf()
 		if ok {
 			fmt.Fprint(output, val)
 		} else {
 			// If var isn't found, leave output the same
 			output.WriteString(open.String())
 			output.WriteString(variable.String())
-			close := t.nextFromBuf()
 			output.WriteString(close.String())
 		}
 	}
@@ -411,7 +413,7 @@ func (t *templater) ifStatement(ifWord *block, output *bytes.Buffer) error {
 	if comparisonOrClose.Type == LogicClose {
 		return t.ifTruthy(&operand, val1, output)
 	}
-	return t.ifComparison(&operand, &comparisonOrClose, val1, output)
+	return t.ifComparison(&comparisonOrClose, val1, output)
 }
 
 func (t *templater) ifTruthy(operand *block, val any, output *bytes.Buffer) error {
@@ -423,7 +425,7 @@ func (t *templater) ifTruthy(operand *block, val any, output *bytes.Buffer) erro
 	)
 }
 
-func (t *templater) ifComparison(operandA, comparison *block, valA any, output *bytes.Buffer) error {
+func (t *templater) ifComparison(comparison *block, valA any, output *bytes.Buffer) error {
 	// If valA ==/!= valB
 	operandB := t.nextFromBuf()
 
@@ -445,6 +447,7 @@ func (t *templater) ifComparison(operandA, comparison *block, valA any, output *
 	}
 
 	var ifTrue bool
+	// No need for else here, the value has already been checked to be valid.
 	if comparisonString == "==" || comparisonString == "=" {
 		ifTrue = valA == valB
 	} else if comparisonString == "!=" {

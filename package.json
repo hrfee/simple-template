@@ -1,0 +1,26 @@
+{
+  "name": "@hrfee/simpletemplate",
+  "version": "1.1.0",
+  "description": "simple text templater for either typescript or go",
+  "homepage": "https://github.com/hrfee/simple-template#readme",
+  "bugs": {
+    "url": "https://github.com/hrfee/simple-template/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hrfee/simple-template.git"
+  },
+  "license": "MIT",
+  "author": "Harvey Tindall",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "go test -tags testjs -run JS",
+    "types:check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}
