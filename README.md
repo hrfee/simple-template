@@ -1,5 +1,6 @@
 # simple-template
-[![Go Reference](https://pkg.go.dev/badge/github.com/hrfee/simple-template.svg)](https://pkg.go.dev/github.com/hrfee/simple-template) ![NPM Version](https://img.shields.io/npm/v/%40hrfee%2Fsimple-template)
+[![Go Reference](https://pkg.go.dev/badge/github.com/hrfee/simple-template.svg)](https://pkg.go.dev/github.com/hrfee/simple-template) [![NPM Version](https://img.shields.io/npm/v/%40hrfee%2Fsimpletemplate)](https://www.npmjs.com/package/@hrfee/simpletemplate)
+
 simple templater for templates written by an end user, implemented in both go and typescript. see godoc for more info.
 typescript implementation is as close as possible to the go version, and as such the godoc should apply almost entirely.
 tests are written in go, and cover the go version, the old go version, and the typescript version (through a wrapper script).
@@ -25,12 +26,12 @@ goos: linux
 goarch: amd64
 pkg: github.com/hrfee/simple-template
 cpu: Intel(R) Core(TM) Ultra 9 185H
-BenchmarkBlankTemplateBuiltinOnDemand-22          	1017019	     1169 ns/op
-BenchmarkConditionalTrueBuiltinOnDemand-22        	 193219	     6022 ns/op
-BenchmarkConditionalFalseBuiltinOnDemand-22       	 190468	     6045 ns/op
-BenchmarkBlankTemplateBuiltinPrecompiled-22       	10806879	      105.6 ns/op
-BenchmarkConditionalTrueBuiltinPrecompiled-22     	 925048	     1081 ns/op
-BenchmarkConditionalFalseBuiltinPrecompiled-22    	 743378	     1389 ns/op
+BenchmarkBlankTemplateBuiltinOnDemand-22          	1017019	     1169   ns/op
+BenchmarkConditionalTrueBuiltinOnDemand-22        	 193219	     6022   ns/op
+BenchmarkConditionalFalseBuiltinOnDemand-22       	 190468	     6045   ns/op
+BenchmarkBlankTemplateBuiltinPrecompiled-22        10806879	      105.6 ns/op
+BenchmarkConditionalTrueBuiltinPrecompiled-22     	 925048	     1081   ns/op
+BenchmarkConditionalFalseBuiltinPrecompiled-22    	 743378	     1389   ns/op
 BenchmarkBlankTemplateOld-22                      	8661529	      138.0 ns/op
 BenchmarkConditionalTrueOld-22                    	1698522	      706.5 ns/op
 BenchmarkConditionalFalseOld-22                   	3465555	      343.9 ns/op
