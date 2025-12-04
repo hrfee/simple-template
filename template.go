@@ -37,6 +37,51 @@ func truthy(val interface{}) bool {
 	return false
 }
 
+type block struct {
+	parent *templater
+	a, b   int // start/end indices (inclusive)
+	Type   BlockType
+}
+
+func (blk *block) String() string {
+	if blk.Type == String {
+		return blk.parent.input[blk.a+1 : blk.b]
+	} else if blk.Type == EOF {
+		return ""
+	}
+	return blk.parent.input[blk.a : blk.b+1]
+}
+
+func (blk *block) Describe() string {
+	return fmt.Sprintf("%s[%d:%d]=\"%s\"", blockTypeToString(blk.Type), blk.a, blk.b, blk.String())
+}
+
+func blockTypeToString(b BlockType) string {
+	switch b {
+	case PlainText:
+		return "PlainText"
+	case LogicOpen:
+		return "LogicOpen"
+	case LogicClose:
+		return "LogicClose"
+	case Word:
+		return "Word"
+	case String:
+		return "String"
+	case EOF:
+		return "EOF"
+	}
+	return "?"
+}
+
+func (b *block) expected(expected ...BlockType) error {
+	return ExpectedTypeError{b.b, b.Type, expected}
+}
+
+func (b *block) expectedWord(expected string) error {
+	return ExpectedError{b.b, b.String(), expected}
+}
+
 // DoubleBraceError indicates double braces were used instead of single braces. This being returned does not indicate that templating failed.
 type DoubleBraceError struct{ pos int }
 
@@ -78,24 +123,6 @@ type ExpectedError struct {
 
 func (e ExpectedError) Error() string {
 	return fmt.Sprintf("near char %d: got \"%s\", expected %s", e.Pos, e.got, e.expected)
-}
-
-func blockTypeToString(b BlockType) string {
-	switch b {
-	case PlainText:
-		return "PlainText"
-	case LogicOpen:
-		return "LogicOpen"
-	case LogicClose:
-		return "LogicClose"
-	case Word:
-		return "Word"
-	case String:
-		return "String"
-	case EOF:
-		return "EOF"
-	}
-	return "?"
 }
 
 type templater struct {
@@ -158,179 +185,6 @@ func Template(input string, vals map[string]any) (string, error) {
 	return t.output.String(), err
 }
 
-func (t *templater) process(a *block, output *bytes.Buffer) error {
-	switch a.Type {
-	case PlainText:
-		if output != nil {
-			output.WriteString(a.String())
-		}
-		return nil
-	case LogicOpen:
-		return t.logicOpen(a, output)
-	// LogicClose and Word/String should only occur within logic blocks and so
-	// they should not appear here.
-	case LogicClose:
-	case Word:
-	case String:
-		return a.expected(LogicOpen, PlainText)
-	}
-	return nil
-}
-
-func (t *templater) nextFromBuf() block {
-	out := t.buffer.buf[t.buffer.pos]
-	t.next(&(t.buffer.buf[t.buffer.pos]))
-	t.buffer.pos = (t.buffer.pos + 1) % seekBufferSize
-	// _, file, no, ok := runtime.Caller(1)
-	// if ok {
-	// 	fmt.Printf("called from %s#%d: %s\n", file, no, out.Describe())
-	// }
-	return out
-}
-
-func (t *templater) peek() block {
-	return t.buffer.buf[t.buffer.pos]
-}
-
-func (b *block) expected(expected ...BlockType) error {
-	return ExpectedTypeError{b.b, b.Type, expected}
-}
-
-func (b *block) expectedWord(expected string) error {
-	return ExpectedError{b.b, b.String(), expected}
-}
-
-// {var}|{if (var|string)}|{if (var|string) (==|=|!=) (var|string)}
-// ...
-// {endif}
-func (t *templater) logicOpen(open *block, output *bytes.Buffer) error {
-	ifWordOrVar := t.peek()
-	if ifWordOrVar.Type != Word {
-		return ifWordOrVar.expected(Word)
-	}
-	t.nextFromBuf()
-
-	closeOrOperand := t.peek()
-	if closeOrOperand.Type == LogicClose {
-		// Variable ({var})
-		t.nextFromBuf()
-
-		if output != nil {
-			val, ok := t.vals[ifWordOrVar.String()]
-			if ok {
-				fmt.Fprint(output, val)
-			} else {
-				// If var isn't found, leave output the same
-				output.WriteString(open.String())
-				output.WriteString(ifWordOrVar.String())
-				output.WriteString(closeOrOperand.String())
-			}
-		}
-		return nil
-	} else if ifWordOrVar.String() != "if" {
-		return ifWordOrVar.expectedWord("\"if\"")
-	}
-	// If Statement
-
-	t.nextFromBuf()
-	val1, err := t.operand(&closeOrOperand)
-	if err != nil {
-		return err
-	}
-
-	comparisonOrClose := t.nextFromBuf()
-
-	ifTrue := false
-	if comparisonOrClose.Type == LogicClose {
-		// If Bool(val)
-		positive := t.input[closeOrOperand.a] != '!'
-		ifTrue = positive == truthy(val1)
-	} else {
-		// If valA ==/!= valB
-		operand2 := t.peek()
-
-		comparison := comparisonOrClose.String()
-		if comparison == "==" {
-			t.nextFromBuf()
-		} else if comparison == "=" {
-			t.nextFromBuf()
-			t.warning = SingleEqualsError{comparisonOrClose.a}
-		} else if comparison == "!=" {
-			t.nextFromBuf()
-		} else {
-			return comparisonOrClose.expectedWord("==/=/!=")
-		}
-
-		val2, err := t.operand(&operand2)
-		if err != nil {
-			return err
-		}
-
-		shouldBeClose := t.nextFromBuf()
-		if shouldBeClose.Type != LogicClose {
-			return shouldBeClose.expected(LogicClose)
-		}
-
-		if comparison == "==" || comparison == "=" {
-			ifTrue = val1 == val2
-		} else if comparison == "!=" {
-			ifTrue = val1 != val2
-		}
-	}
-	var next block
-	var content bytes.Buffer
-	var contentPtr *bytes.Buffer = nil
-	if ifTrue {
-		contentPtr = &content
-	}
-	for {
-		next = t.nextFromBuf()
-		if next.Type == EOF {
-			break
-		}
-		if next.Type == LogicOpen {
-			endif := t.peek()
-			if endif.Type == Word && endif.String() == "endif" {
-				t.nextFromBuf()
-				shouldBeClose := t.nextFromBuf()
-				if shouldBeClose.Type == LogicClose {
-					if output != nil {
-						output.Write(content.Bytes())
-					}
-					break
-				}
-			}
-		}
-		// We need to process for the sake of nested if statements.
-		t.process(&next, contentPtr)
-	}
-	if next.Type == EOF {
-		return next.expectedWord("{endif}")
-	}
-	return nil
-}
-
-func (t *templater) operand(a *block) (any, error) {
-	if a.Type == String {
-		return a.String(), nil
-	} else if a.Type == Word {
-		var name string
-		if t.input[a.a] == '!' {
-			name = t.input[a.a+1 : a.b+1]
-		} else {
-			name = a.String()
-		}
-		val, ok := t.vals[name]
-		if ok {
-			return val, nil
-		} else {
-			return "", nil
-		}
-	} else {
-		return nil, a.expected(Word)
-	}
-}
-
 func (t *templater) getChar() byte {
 	if t.pos+1 == t.len {
 		return 0
@@ -344,25 +198,6 @@ func (t *templater) peekChar() byte {
 		return 0
 	}
 	return t.input[t.pos+1]
-}
-
-type block struct {
-	parent *templater
-	a, b   int // start/end indices (inclusive)
-	Type   BlockType
-}
-
-func (blk *block) String() string {
-	if blk.Type == String {
-		return blk.parent.input[blk.a+1 : blk.b]
-	} else if blk.Type == EOF {
-		return ""
-	}
-	return blk.parent.input[blk.a : blk.b+1]
-}
-
-func (blk *block) Describe() string {
-	return fmt.Sprintf("%s[%d:%d]=\"%s\"", blockTypeToString(blk.Type), blk.a, blk.b, blk.String())
 }
 
 func (t *templater) next(blk *block) {
@@ -437,5 +272,179 @@ func (t *templater) next(blk *block) {
 				break
 			}
 		}
+	}
+}
+
+func (t *templater) nextFromBuf() block {
+	out := t.buffer.buf[t.buffer.pos]
+	t.next(&(t.buffer.buf[t.buffer.pos]))
+	t.buffer.pos = (t.buffer.pos + 1) % seekBufferSize
+	// _, file, no, ok := runtime.Caller(1)
+	// if ok {
+	// 	fmt.Printf("called from %s#%d: %s\n", file, no, out.Describe())
+	// }
+	return out
+}
+
+func (t *templater) peek() block {
+	return t.buffer.buf[t.buffer.pos]
+}
+
+func (t *templater) process(a *block, output *bytes.Buffer) error {
+	switch a.Type {
+	case PlainText:
+		if output != nil {
+			output.WriteString(a.String())
+		}
+		return nil
+	case LogicOpen:
+		return t.logicOpen(a, output)
+	// LogicClose and Word/String should only occur within logic blocks and so
+	// they should not appear here.
+	case LogicClose:
+	case Word:
+	case String:
+		return a.expected(LogicOpen, PlainText)
+	}
+	return nil
+}
+
+func (t *templater) processIfBody(ifTrue bool, output *bytes.Buffer) error {
+	var next block
+	var content bytes.Buffer
+	var contentPtr *bytes.Buffer = nil
+	if ifTrue {
+		contentPtr = &content
+	}
+	for {
+		next = t.nextFromBuf()
+		if next.Type == EOF {
+			break
+		}
+		if next.Type == LogicOpen {
+			endif := t.peek()
+			if endif.Type == Word && endif.String() == "endif" {
+				t.nextFromBuf()
+				shouldBeClose := t.nextFromBuf()
+				if shouldBeClose.Type == LogicClose {
+					if output != nil {
+						output.Write(content.Bytes())
+					}
+					break
+				}
+			}
+		}
+		// We need to process for the sake of nested if statements.
+		t.process(&next, contentPtr)
+	}
+	if next.Type == EOF {
+		return next.expectedWord("{endif}")
+	}
+	return nil
+}
+
+func (t *templater) logicOpen(open *block, output *bytes.Buffer) error {
+	ifWordOrVar := t.nextFromBuf()
+	if ifWordOrVar.Type != Word {
+		return ifWordOrVar.expected(Word)
+	}
+
+	closeOrOperand := t.nextFromBuf()
+	if closeOrOperand.Type == LogicClose {
+		return t.templateValue(open, &ifWordOrVar, &closeOrOperand, output)
+	}
+	return t.ifStatement(&ifWordOrVar, &closeOrOperand, output)
+}
+
+func (t *templater) templateValue(open, variable, close *block, output *bytes.Buffer) error {
+	if output != nil {
+		val, ok := t.vals[variable.String()]
+		if ok {
+			fmt.Fprint(output, val)
+		} else {
+			// If var isn't found, leave output the same
+			output.WriteString(open.String())
+			output.WriteString(variable.String())
+			output.WriteString(close.String())
+		}
+	}
+	return nil
+}
+
+func (t *templater) ifStatement(ifWord, operand *block, output *bytes.Buffer) error {
+	if ifWord.String() != "if" {
+		return ifWord.expectedWord("\"if\"")
+	}
+
+	val1, err := t.operand(operand)
+	if err != nil {
+		return err
+	}
+
+	comparisonOrClose := t.nextFromBuf()
+
+	if comparisonOrClose.Type == LogicClose {
+		return t.ifTruthy(operand, val1, output)
+	}
+	return t.ifComparison(operand, &comparisonOrClose, val1, output)
+}
+
+func (t *templater) ifTruthy(operand *block, val any, output *bytes.Buffer) error {
+	// If Bool(val)
+	positive := t.input[operand.a] != '!'
+	return t.processIfBody(
+		positive == truthy(val),
+		output,
+	)
+}
+
+func (t *templater) ifComparison(operandA, comparison *block, valA any, output *bytes.Buffer) error {
+	// If valA ==/!= valB
+	operandB := t.nextFromBuf()
+
+	comparisonString := comparison.String()
+	if comparisonString == "=" {
+		t.warning = SingleEqualsError{comparison.a}
+	} else if comparisonString != "==" && comparisonString != "!=" {
+		return comparison.expectedWord("==/=/!=")
+	}
+
+	valB, err := t.operand(&operandB)
+	if err != nil {
+		return err
+	}
+
+	shouldBeClose := t.nextFromBuf()
+	if shouldBeClose.Type != LogicClose {
+		return shouldBeClose.expected(LogicClose)
+	}
+
+	var ifTrue bool
+	if comparisonString == "==" || comparisonString == "=" {
+		ifTrue = valA == valB
+	} else if comparisonString == "!=" {
+		ifTrue = valA != valB
+	}
+	return t.processIfBody(ifTrue, output)
+}
+
+func (t *templater) operand(a *block) (any, error) {
+	if a.Type == String {
+		return a.String(), nil
+	} else if a.Type == Word {
+		var name string
+		if t.input[a.a] == '!' {
+			name = t.input[a.a+1 : a.b+1]
+		} else {
+			name = a.String()
+		}
+		val, ok := t.vals[name]
+		if ok {
+			return val, nil
+		} else {
+			return "", nil
+		}
+	} else {
+		return nil, a.expected(Word)
 	}
 }
